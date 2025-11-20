@@ -70,18 +70,21 @@ builder.Services.AddScoped<SapIngestService>();
  // AI MODULE - NEW
 // =========================
 
+// =========================
+// AI MODULE
+// =========================
+
 // 1) Chính sách AI nội bộ / external
-//    Đọc từ section "Ai" trong appsettings (không đổi tên key)
 builder.Services.Configure<AiPolicyOptions>(cfg.GetSection("Ai"));
 
 // 2) Setting ChatGPT (nếu bật external)
-//    ApiKey sẽ lấy từ env var: Ai__OpenAI__ApiKey (không để key thật trong appsettings.json)
-builder.Services.Configure<OpenAiOptions>(cfg.GetSection("Ai:OpenAI"));
+//    ApiKey sẽ lấy từ env var: Ai__OpenAI__ApiKey
+builder.Services.Configure<AiOptions>(cfg.GetSection("Ai:OpenAI"));
 
 // 3) HttpClient → ChatGPT
-builder.Services.AddHttpClient<OpenAiClient>();
+builder.Services.AddHttpClient<AiClient>();
 
-// 4) AI Advisor Service (giữ nguyên + injected thêm OpenAiClient)
+// 4) AI Advisor Service
 builder.Services.AddScoped<AiAdvisorService>();
 
 // =========================
