@@ -174,7 +174,13 @@ Liên quan ECN:
             // --- 4. Ví dụ câu hỏi data: ECN quá hạn
             if (lower.Contains("ecn quá hạn") || lower.Contains("ecn overdue"))
             {
-                var stats = await _ecnService.GetOverdueSummaryAsync();
+               // var stats = await _ecnService.GetOverdueSummaryAsync();  (tạm thời sửa lệnh này bằng đoạn lệnh phía dưới)
+                // Tạm thời bỏ gọi GetOverdueSummaryAsync vì chưa implement trong EcnService
+                var overdueSummary = "Chức năng thống kê Overdue hiện đang được cập nhật trong hệ thống ECN.";
+
+// Nếu phía dưới có build prompt, anh thay dùng overdueSummary
+// ví dụ:
+                promptBuilder.AppendLine(overdueSummary);
 
                 return $@"Báo cáo ECN quá hạn (tóm tắt):
 
@@ -259,3 +265,4 @@ Liên quan ECN:
         }
     }
 }
+
