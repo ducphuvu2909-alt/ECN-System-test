@@ -6,20 +6,14 @@ using WebApp.Services;
 using WebApp.Data;
 using Microsoft.AspNetCore.Authorization;
 
-// ============ NEW USING ===============
-using Microsoft.Extensions.Options;
-//using WebApp.AI;   // (folder mới cho OpenAiOptions + OpenAiClient)
-// Alias để tránh trùng tên
+// Đặt alias để tránh trùng tên OpenAiOptions giữa WebApp.AI và WebApp.Data
 using AiOptions = WebApp.AI.OpenAiOptions;
 using AiClient = WebApp.AI.OpenAiClient;
-// =====================================
 
 var builder = WebApplication.CreateBuilder(args);
 
 // Background scheduler for Admin Jobs
 builder.Services.AddHostedService<EcnJobRunnerHostedService>();
-
-
 
 // =========================
 // APP CONFIG
@@ -30,7 +24,7 @@ builder.Services.AddControllers();
 builder.Services.AddEndpointsApiExplorer();
 
 // =========================
-// JWT AUTH (GIỮ NGUYÊN)
+ // JWT AUTH (GIỮ NGUYÊN)
 // =========================
 var jwtKey = cfg["Jwt:Key"] ?? "CHANGE_ME_TO_A_LONG_RANDOM_SECRET";
 var issuer = cfg["Jwt:Issuer"] ?? "ECNManager";
@@ -65,10 +59,6 @@ builder.Services.AddScoped<EcnService>();
 builder.Services.AddScoped<DeptService>();
 builder.Services.AddScoped<NotifyService>();
 builder.Services.AddScoped<SapIngestService>();
-
-// =========================
- // AI MODULE - NEW
-// =========================
 
 // =========================
 // AI MODULE
