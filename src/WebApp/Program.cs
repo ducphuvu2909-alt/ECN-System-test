@@ -8,13 +8,17 @@ using Microsoft.AspNetCore.Authorization;
 
 // ============ NEW USING ===============
 using Microsoft.Extensions.Options;
-using WebApp.AI;   // (folder mới cho OpenAiOptions + OpenAiClient)
+//using WebApp.AI;   // (folder mới cho OpenAiOptions + OpenAiClient)
+// Alias để tránh trùng tên
+using AiOptions = WebApp.AI.OpenAiOptions;
+using AiClient = WebApp.AI.OpenAiClient;
 // =====================================
 
 var builder = WebApplication.CreateBuilder(args);
 
 // Background scheduler for Admin Jobs
 builder.Services.AddHostedService<EcnJobRunnerHostedService>();
+
 
 
 // =========================
