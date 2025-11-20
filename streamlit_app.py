@@ -5,288 +5,143 @@ import pandas as pd
 import streamlit as st
 import streamlit.components.v1 as components
 
-# ========= CẤU HÌNH ĐƯỜNG DẪN =========
-# DB ECN (SQLite) – mặc định nằm ở cùng thư mục với streamlit_app.py
+# ================== CẤU HÌNH ĐƯỜNG DẪN ==================
+# File DB ECN (SQLite)
 DB_PATH = Path("ecn.db")
 
-# File HTML ECN Manager (bản .NET UI)
-ECN_HTML_PATH = Path("ECN_Manager_Fullcode/src/WebApp/wwwroot/ecn.html")
+# File giao diện hệ thống ECN Manager (bản HTML của WebApp .NET)
+ECN_HTML_PATH = Path("src/WebApp/wwwroot/ecn.html")
 
 
-# ========= HÀM TIỆN ÍCH DB =========
+# ================== HÀM DB TIỆN ÍCH ==================
 @st.cache_resource
 def get_connection():
+    """
+    Lấy connection tới ecn.db.
+    Nếu chưa có file DB thì tạo rỗng để tránh lỗi kết nối.
+    """
     if not DB_PATH.exists():
-        raise FileNotFoundError(f"Không tìm thấy file DB: {DB_PATH}")
+        conn = sqlite3.connect(DB_PATH)
+        conn.close()
     conn = sqlite3.connect(DB_PATH)
     conn.row_factory = sqlite3.Row
     return conn
 
 
-def load_table(table_name: str) -> pd.DataFrame:
-    """Đọc 1 bảng bất kỳ trong ecn.db, nếu không tồn tại thì trả DF rỗng."""
+def users_table_exists() -> bool:
+    """Kiểm tra xem có bảng Users trong ecn.db hay không."""
+    conn = get_connection()
+    cur = conn.cursor()
+    cur.execute(
+        "SELECT name FROM sqlite_master WHERE type='table' AND name='Users';"
+    )
+    row = cur.fetchone()
+    return row is not None
+
+
+def check_login(username: str, password: str) -> bool:
+    """
+    Logic login:
+    1. Nếu có bảng Users trong DB:
+       - cố gắng dùng cột Username / Password (giản đơn).
+    2. Nếu không có / lỗi:
+       - fallback account demo: admin / 123456
+    """
     conn = get_connection()
     try:
-        df = pd.read_sql_query(f"SELECT * FROM {table_name}", conn)
+        if users_table_exists():
+            df = pd.read_sql_query("SELECT * FROM Users", conn)
+            # tìm cột khả dụng
+            cols = [c.lower() for c in df.columns]
+
+            # map tên cột linh hoạt một chút
+            def find_col(names):
+                for n in names:
+                    if n.lower() in cols:
+                        return df.columns[cols.index(n.lower())]
+                return None
+
+            user_col = find_col(["Username", "UserName", "Login", "User"])
+            pass_col = find_col(["Password", "Pass", "Pwd"])
+
+            if user_col and pass_col:
+                row = df[
+                    (df[user_col] == username) &
+                    (df[pass_col] == password)
+                ]
+                if not row.empty:
+                    return True
     except Exception:
-        df = pd.DataFrame()
-    return df
+        # có vấn đề gì thì bỏ qua, dùng fallback
+        pass
+
+    # Fallback demo nếu không check được từ DB
+    return username == "admin" and password == "123456"
 
 
-# ========= GIAO DIỆN CHÍNH =========
+# ================== STREAMLIT APP ==================
 st.set_page_config(
-    page_title="ECN Manager - Streamlit",
+    page_title="ECN Manager - Login",
     layout="wide",
 )
 
-st.title("ECN Manager – Streamlit Console")
-st.caption("Bản dashboard đơn giản để xem & test hệ thống ECN trên môi trường Streamlit")
+# Trạng thái session
+if "logged_in" not in st.session_state:
+    st.session_state.logged_in = False
+if "username" not in st.session_state:
+    st.session_state.username = None
 
 
-# ========= SIDEBAR: MENU =========
-with st.sidebar:
-    st.header("Navigation")
-    page = st.radio(
-        "Chọn module",
-        [
-            "📊 Dashboard tổng",
-            "👤 Admin Users",
-            "🧩 Admin Jobs / Scheduler",
-            "📣 Admin Notifications",
-            "🧱 ECN HTML Prototype",
-            "🛠 SQL Explorer (advanced)",
-        ],
-    )
-    st.markdown("---")
-    st.write("DB path:", f"`{DB_PATH}`")
+# ---------- MÀN HÌNH LOGIN ----------
+if not st.session_state.logged_in:
+    st.title("ECN Manager – Đăng nhập")
 
+    # Thông tin DB cho anh dễ debug
+    st.caption(f"DB path đang dùng: `{DB_PATH}`")
 
-# ========= PAGE: DASHBOARD =========
-if page == "📊 Dashboard tổng":
-    st.subheader("Tổng quan ECN Manager (đọc từ ecn.db)")
+    with st.form("login_form", clear_on_submit=False):
+        username = st.text_input("Username", value="", key="login_user")
+        password = st.text_input("Password", type="password", value="", key="login_pass")
+        submitted = st.form_submit_button("Login")
 
-    if not DB_PATH.exists():
-        st.error(f"Không tìm thấy file DB: `{DB_PATH}`.\n\nHãy copy `ecn.db` từ WebApp sang cùng thư mục với `streamlit_app.py`.")
-    else:
-        col1, col2, col3, col4 = st.columns(4)
-
-        df_ecn = load_table("ECNs")
-        df_users = load_table("AdminUserConfigs")
-        df_jobs = load_table("AdminJobs")
-        df_notify = load_table("AdminNotificationSubscriptions")
-
-        with col1:
-            st.metric("Số lượng ECN", len(df_ecn) if not df_ecn.empty else 0)
-        with col2:
-            st.metric("Số user Admin", len(df_users) if not df_users.empty else 0)
-        with col3:
-            st.metric("Số job Scheduler", len(df_jobs) if not df_jobs.empty else 0)
-        with col4:
-            st.metric("Số subscription notify", len(df_notify) if not df_notify.empty else 0)
-
-        st.markdown("### Chi tiết nhanh")
-        tab1, tab2 = st.tabs(["ECN gần nhất", "Job & Notify"])
-
-        with tab1:
-            if df_ecn.empty:
-                st.info("Chưa có bảng `ECNs` hoặc chưa có dữ liệu.")
+        if submitted:
+            if check_login(username, password):
+                st.session_state.logged_in = True
+                st.session_state.username = username
+                st.success("Đăng nhập thành công.")
+                st.experimental_rerun()
             else:
-                df_ecn_sorted = df_ecn.sort_values(by=df_ecn.columns[0], ascending=False)
-                st.dataframe(df_ecn_sorted.head(20), use_container_width=True)
+                st.error("Sai username hoặc password.")
 
-        with tab2:
-            c1, c2 = st.columns(2)
-            with c1:
-                st.markdown("**AdminJobs**")
-                if df_jobs.empty:
-                    st.info("Chưa có bảng `AdminJobs` hoặc chưa có dữ liệu.")
-                else:
-                    st.dataframe(df_jobs, use_container_width=True, height=300)
-            with c2:
-                st.markdown("**AdminNotificationSubscriptions**")
-                if df_notify.empty:
-                    st.info("Chưa có bảng `AdminNotificationSubscriptions` hoặc chưa có dữ liệu.")
-                else:
-                    st.dataframe(df_notify, use_container_width=True, height=300)
+    st.stop()  # dừng, không render phần dưới khi chưa login
 
 
-# ========= PAGE: ADMIN USERS =========
-elif page == "👤 Admin Users":
-    st.subheader("Admin Users – Cấu hình người dùng & Global ID")
+# ---------- SAU KHI LOGIN: VÀO THẲNG ECN.HTML ----------
+# Sidebar nhỏ để logout
+with st.sidebar:
+    st.success(f"Logged in as: {st.session_state.username}")
+    if st.button("Logout"):
+        st.session_state.logged_in = False
+        st.session_state.username = None
+        st.experimental_rerun()
 
-    if not DB_PATH.exists():
-        st.error(f"Không tìm thấy file DB: `{DB_PATH}`.")
-    else:
-        df = load_table("AdminUserConfigs")
-        if df.empty:
-            st.info("Chưa có bảng `AdminUserConfigs` hoặc chưa có dữ liệu. Hãy dùng ECN Admin (trong WebApp) để tạo trước.")
-        else:
-            st.dataframe(df, use_container_width=True)
+st.title("ECN Manager – Giao diện hệ thống (ecn.html)")
 
-        st.markdown("### Thêm user mới (demo ghi trực tiếp DB)")
-        with st.form("add_admin_user_form"):
-            col1, col2 = st.columns(2)
-            with col1:
-                name = st.text_input("Họ tên")
-                gid = st.text_input("Global ID")
-                email = st.text_input("Email")
-            with col2:
-                dept = st.text_input("Phòng ban", value="FE")
-                role = st.text_input("Vai trò", value="Viewer")
-                status = st.selectbox("Trạng thái", ["Active", "Suspended"])
-            note = st.text_area("Ghi chú", height=60)
+# Kiểm tra file ecn.html
+if not ECN_HTML_PATH.exists():
+    st.error(f"Không tìm thấy file ecn.html tại: `{ECN_HTML_PATH}`")
+    st.info(
+        "Hãy kiểm tra lại cấu trúc repo. "
+        "Mặc định code đang tìm: src/WebApp/wwwroot/ecn.html"
+    )
+else:
+    html = ECN_HTML_PATH.read_text(encoding="utf-8")
 
-            submitted = st.form_submit_button("Lưu vào DB")
-            if submitted:
-                if not name or not gid:
-                    st.warning("Cần nhập Họ tên và Global ID.")
-                else:
-                    conn = get_connection()
-                    cur = conn.cursor()
-                    cur.execute(
-                        """
-                        INSERT INTO AdminUserConfigs (Name, GlobalId, Email, Dept, Role, Status, Note)
-                        VALUES (?, ?, ?, ?, ?, ?, ?)
-                        """,
-                        (name, gid, email, dept, role, status, note),
-                    )
-                    conn.commit()
-                    st.success("Đã thêm user mới vào AdminUserConfigs.")
-                    st.experimental_rerun()
+    st.info(
+        "Đây là giao diện hệ thống ECN Manager (`ecn.html`) được nhúng trực tiếp vào Streamlit.\n"
+        "Các API `/api/...` của backend .NET sẽ không hoạt động trong môi trường Streamlit, "
+        "nhưng giao diện và logic JavaScript phía client vẫn có thể dùng để demo / test UI."
+    )
 
-
-# ========= PAGE: ADMIN JOBS =========
-elif page == "🧩 Admin Jobs / Scheduler":
-    st.subheader("Admin Jobs / Scheduler – Cấu hình job sync SAP & ECN")
-
-    if not DB_PATH.exists():
-        st.error(f"Không tìm thấy file DB: `{DB_PATH}`.")
-    else:
-        df = load_table("AdminJobs")
-        if df.empty:
-            st.info("Chưa có bảng `AdminJobs` hoặc chưa có dữ liệu. Hãy tạo job từ ECN Admin hoặc form dưới.")
-        else:
-            st.dataframe(df, use_container_width=True)
-
-        st.markdown("### Thêm job mới (demo ghi trực tiếp DB)")
-        with st.form("add_job_form"):
-            name = st.text_input("Tên Job", value="SAP Valid BOM Sync")
-            jtype = st.text_input("Loại Job", value="SAP Valid BOM Sync")
-            src = st.text_input("Nguồn dữ liệu (share path / URL)", value="\\\\sap-share\\ECN\\export_valid_bom.xlsx")
-            schedule = st.text_input("Lịch chạy (mô tả text)", value="Mỗi 15 phút")
-            enabled = st.checkbox("Bật job (Enabled)", value=True)
-            note = st.text_area("Ghi chú", height=60)
-
-            submitted = st.form_submit_button("Lưu vào DB")
-            if submitted:
-                conn = get_connection()
-                cur = conn.cursor()
-                cur.execute(
-                    """
-                    INSERT INTO AdminJobs (Name, Type, SourcePath, Schedule, Enabled, Note)
-                    VALUES (?, ?, ?, ?, ?, ?)
-                    """,
-                    (name, jtype, src, schedule, 1 if enabled else 0, note),
-                )
-                conn.commit()
-                st.success("Đã thêm job mới vào AdminJobs.")
-                st.experimental_rerun()
-
-
-# ========= PAGE: ADMIN NOTIFICATIONS =========
-elif page == "📣 Admin Notifications":
-    st.subheader("Admin Notifications – Đăng ký nhận cảnh báo ECN")
-
-    if not DB_PATH.exists():
-        st.error(f"Không tìm thấy file DB: `{DB_PATH}`.")
-    else:
-        df = load_table("AdminNotificationSubscriptions")
-        if df.empty:
-            st.info("Chưa có bảng `AdminNotificationSubscriptions` hoặc chưa có dữ liệu.")
-        else:
-            st.dataframe(df, use_container_width=True)
-
-        st.markdown("### Thêm subscription mới (demo ghi trực tiếp DB)")
-        with st.form("add_notify_form"):
-            col1, col2 = st.columns(2)
-            with col1:
-                name = st.text_input("Người nhận", value="QC Manager")
-                email = st.text_input("Email", value="qc.manager@company.com")
-                dept = st.text_input("Bộ phận", value="QC")
-            with col2:
-                evt_valid = st.checkbox("Valid ECN thay đổi", value=True)
-                evt_new = st.checkbox("New ECN Effective", value=True)
-                evt_deadline = st.checkbox("Deadline ECN sắp tới", value=True)
-                evt_joberr = st.checkbox("Job sync lỗi", value=True)
-
-            channel = st.selectbox("Kênh nhận", ["Popup", "Email", "Popup + Email"], index=2)
-            freq = st.selectbox("Tần suất", ["Real-time", "Hourly digest", "Daily summary"], index=0)
-            note = st.text_area("Ghi chú", height=60)
-
-            submitted = st.form_submit_button("Lưu vào DB")
-            if submitted:
-                conn = get_connection()
-                cur = conn.cursor()
-                cur.execute(
-                    """
-                    INSERT INTO AdminNotificationSubscriptions
-                    (Name, Email, Dept, EvtValid, EvtNew, EvtDeadline, EvtJobError, Channel, Frequency, Note)
-                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-                    """,
-                    (
-                        name,
-                        email,
-                        dept,
-                        1 if evt_valid else 0,
-                        1 if evt_new else 0,
-                        1 if evt_deadline else 0,
-                        1 if evt_joberr else 0,
-                        channel,
-                        freq,
-                        note,
-                    ),
-                )
-                conn.commit()
-                st.success("Đã thêm subscription mới.")
-                st.experimental_rerun()
-
-
-# ========= PAGE: ECN HTML PROTOTYPE =========
-elif page == "🧱 ECN HTML Prototype":
-    st.subheader("Prototype giao diện ECN (ecn.html) bên trong Streamlit")
-
-    if not ECN_HTML_PATH.exists():
-        st.error(f"Không tìm thấy file ecn.html tại: `{ECN_HTML_PATH}`")
-        st.info("Hãy đảm bảo repo có thư mục `ECN_Manager_Fullcode/src/WebApp/wwwroot/ecn.html`.")
-    else:
-        html = ECN_HTML_PATH.read_text(encoding="utf-8")
-        st.info(
-            "Đây là bản HTML tĩnh của ECN Manager (bản .NET). "
-            "Một số chức năng gọi API `/api/...` của backend .NET sẽ không hoạt động trong môi trường Streamlit, "
-            "nhưng anh có thể dùng để demo giao diện."
-        )
-        components.html(html, height=900, scrolling=True)
-
-
-# ========= PAGE: SQL EXPLORER =========
-elif page == "🛠 SQL Explorer (advanced)":
-    st.subheader("SQL Explorer – Đọc bảng tùy ý trong ecn.db (chỉ nên xem, hạn chế sửa)")
-
-    if not DB_PATH.exists():
-        st.error(f"Không tìm thấy file DB: `{DB_PATH}`.")
-    else:
-        conn = get_connection()
-        tables = pd.read_sql_query(
-            "SELECT name FROM sqlite_master WHERE type='table' ORDER BY name", conn
-        )
-        if tables.empty:
-            st.info("Database chưa có bảng nào.")
-        else:
-            tname = st.selectbox(
-                "Chọn bảng để xem",
-                tables["name"].tolist(),
-                index=0,
-            )
-            st.write(f"**Nội dung bảng `{tname}`:**")
-            df = load_table(tname)
-            st.dataframe(df, use_container_width=True)
+    # Nhúng nguyên file ecn.html vào trong Streamlit
+    components.html(html, height=900, scrolling=True)
