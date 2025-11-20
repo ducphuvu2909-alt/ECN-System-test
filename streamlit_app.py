@@ -10,7 +10,7 @@ import streamlit.components.v1 as components
 DB_PATH = Path("ecn.db")
 
 # File giao diện hệ thống ECN Manager (bản HTML của WebApp .NET)
-ECN_HTML_PATH = Path("src/WebApp/wwwroot/ecn.html")
+ECN_HTML_PATH = Path("ECN-System-test/src/WebApp/wwwroot/ecn.html")
 
 
 # ================== HÀM DB TIỆN ÍCH ==================
@@ -145,3 +145,4 @@ else:
 
     # Nhúng nguyên file ecn.html vào trong Streamlit
     components.html(html, height=900, scrolling=True)
+
